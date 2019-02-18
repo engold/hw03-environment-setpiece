@@ -6,6 +6,7 @@ import OpenGLRenderer from './rendering/gl/OpenGLRenderer';
 import Camera from './Camera';
 import {setGL} from './globals';
 import ShaderProgram, {Shader} from './rendering/gl/ShaderProgram';
+import PostProcessShaderProgram from './rendering/gl/PostProcessShaderProgram';
 
 // Define an object with application parameters and button callbacks
 // This will be referred to by dat.GUI's functions that add GUI elements.
@@ -71,6 +72,15 @@ function main() {
     new Shader(gl.VERTEX_SHADER, require('./shaders/flat-vert.glsl')),
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/flat-frag.glsl')),
   ]);
+
+  // trying to add post process shader for hw3
+  // right now, this is the same as reuglar ShaderProgram
+  // needs to involve reading from a texture
+  // const myPostProcessShader = new PostProcessShaderProgram([
+  //   new Shader(gl.FRAGMENT_SHADER, require('./shaders/post-frag.glsl')),
+  //   new Shader(gl.VERTEX_SHADER, require('./shaders/flat-vert.glsl'))
+
+  // ]);
 
   function processKeyPresses() {
     // Use this if you wish
