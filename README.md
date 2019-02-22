@@ -2,6 +2,7 @@
 
 ## Erin Goldberg
 pennKey: engold
+
 ShaderToy link: https://www.shadertoy.com/view/WsBGWc
 
 ![](AppleFinal.png)
@@ -29,7 +30,7 @@ Takes about 9 seconds to compile. Looks best in small window.
   
 - Three different uses of noise: 
   - FBM for the coloring of the cloudy sky, coloring of the grass, bucket woood texture, and the coloring of the apples.
-  - Noise used in the shape of the picnic blanket to make the edges not completely straight and to make the blanket look flat
+  - Noise used in the shape of the picnic blanket to make the edges not completely straight and to make the blanket look not completely flat.
   - Noise used in the calculation of one of the firefly's animated motion.
    
 - Remapping of a value [0, 1] to a set of colors:
@@ -56,10 +57,8 @@ Takes about 9 seconds to compile. Looks best in small window.
 
 ![](appleTexture.png)
 ![](scene.png)
-![](novig.PNG)
-![](withvig.PNG)
 
-##Progress Pictures
+## Progress Pictures
 ![](tuesdayMorninProgress.PNG)
 ![](WedNightProgress.PNG)
 ![](finalpic.PNG)
@@ -72,7 +71,7 @@ Takes about 9 seconds to compile. Looks best in small window.
 ![](sky3.PNG)
 
 - Guassian Blur
-  - I set up the sky coloring/texture in Buffer A and then in Buffer B I used the previous pass to sample surrounding pixels to create a blur effect. This helped softed the FBM output to create something that looks more like clouds.
+  - I set up the sky coloring/texture in Buffer A and then in Buffer B I used the previous pass to sample surrounding pixels to create a blur effect. This helped softed the FBM output to create something that looks more like clouds (and less like pure noise).
   
 - Bloom Effect
   - I used a bloom effect on the fireflies to make them appear to be glowing. The fireflies are created in their own shader pass so that they could be affected by the bloom effect independently from the rest of the objects in the scene. Looking just at the firefly pass, I took samples of surrounding pixels in x and y and then blurred those to create a gradient for recoloring the fireflies to make them appear to be brighter.
