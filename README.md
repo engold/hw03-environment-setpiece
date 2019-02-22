@@ -29,7 +29,7 @@ Takes about 9 seconds to compile. Looks best in small window.
   - Moving clouds in the background, movement of the fireflies, and glow/color of the fireflies turning on and off.
   
 - Three different uses of noise: 
-  - FBM for the coloring of the cloudy sky, coloring of the grass, bucket woood texture, and the coloring of the apples.
+  - FBM for the coloring of the cloudy sky, coloring of the grass, bucket wood texture, and the coloring of the apples.
   - Noise used in the shape of the picnic blanket to make the edges not completely straight and to make the blanket look not completely flat.
   - Noise used in the calculation of one of the firefly's animated motion.
    
@@ -37,7 +37,7 @@ Takes about 9 seconds to compile. Looks best in small window.
   - The sky uses an FBM function to get greyscale noise which I then remapped to some purple values.
   - Use of cosine palette for coloring the noisy spots on the apples.
   
-- Toolbox function uses:
+- Toolbox functions used:
   - Smoothstep used in calculating noise for color and for calculating the fogTerm used to determine how much to mix colors where the ground and sky meet.
   - Bias and Gain functions used in the calculation of the background sky color to increase the color contrast.
   
@@ -71,10 +71,10 @@ Takes about 9 seconds to compile. Looks best in small window.
 ![](sky3.PNG)
 
 - Guassian Blur
-  - I set up the sky coloring/texture in Buffer A and then in Buffer B I used the previous pass to sample surrounding pixels to create a blur effect. This helped softed the FBM output to create something that looks more like clouds (and less like pure noise).
+  - I set up the sky coloring/texture in Buffer A and then in Buffer B I used the previous pass to sample surrounding pixels and used a weighted sum to create a blur effect. This helped softened the FBM output to create something that looks more like clouds (and less like pure noise).
   
 - Bloom Effect
-  - I used a bloom effect on the fireflies to make them appear to be glowing. The fireflies are created in their own shader pass so that they could be affected by the bloom effect independently from the rest of the objects in the scene. Looking just at the firefly pass, I took samples of surrounding pixels in x and y and then blurred those to create a gradient for recoloring the fireflies to make them appear to be brighter.
+  - I used a bloom effect on the fireflies to make them appear to be glowing. The fireflies are created in their own shader pass so that they could be affected by the bloom effect independently from the rest of the objects in the scene. Looking just at the firefly pass, I took samples of surrounding pixels in x and y and used those to create a blur effect by adding the values of the sampled pixels to the color of the fireflies in order to make them appear brighter.
 
  - The fireflies had to have some silhouette geometery so that when they moved around in the scene they wouldn't go on top of certain objects that were supposed to be infront of them. (I colored the background white for this picture so that the other geometry would be visible).
  
