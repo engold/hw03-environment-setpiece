@@ -1,0 +1,1233 @@
+shaderToy link: https://www.shadertoy.com/view/WsBGWc
+
+///////////////////////////////////////////////////// Buffer A /////////////////////////////////////////////////////////////////////////
+// The sky background -------------------------------------------------------
+
+// tool box function
+float bias(float b, float t){
+return pow(t, log(b) / log(0.5f));
+}
+
+float gain(float g, float t){
+  if(t < 0.5f){
+    return bias(1.0 - g, 2.0 * t) / 2.0;
+  }
+  else{
+    return 1.0 - bias(1.0 - g, 2.0 - 2.0 * t) / 2.0;
+  }
+}
+
+// ------FBM--------------------------------------------
+float random (in vec2 st) {
+    return fract(sin(dot(st.xy,
+                         vec2(12.9898,78.233))) * 43758.5453123);
+}
+
+
+//https://thebookofshaders.com/13/
+float noise (in vec2 st) {
+    vec2 i = floor(st);
+    vec2 f = fract(st);
+
+    // Four corners in 2D of a tile
+    float a = random(i);
+    float b = random(i + vec2(1.0, 0.0));
+    float c = random(i + vec2(0.0, 1.0));
+    float d = random(i + vec2(1.0, 1.0));
+
+    vec2 u = f * f * (3.0 - 2.0 * f);
+
+    return mix(a, b, u.x) +
+            (c - a)* u.y * (1.0 - u.x) +
+            (d - b) * u.x * u.y;
+}
+
+// based on Adam's slides
+float fbm (in vec2 st) {
+    // Initial values
+    float total = 0.0;
+    float persist = 0.5;
+    int octaves = 6;
+    
+    // Loop for octaves
+    for (int i = 0; i < octaves; i++) {
+          float frequency = pow(3.0, float(i));
+          float amp = pow(persist, float(i));
+        total +=  abs(noise(vec2(st.x * frequency, st.y * frequency))) * amp;
+       
+    }
+    return total;
+}
+
+
+
+vec3 skyPalette(float t);
+
+//purples
+const vec3 sky0 = vec3(0.1608, 0.3451, 0.851);
+const vec3 sky1 = vec3(0.4588, 0.1529, 0.8118);
+const vec3 sky2 = vec3(0.3725, 0.1647, 0.8588);
+const vec3 sky3 = vec3(0.2353, 0.0745, 0.6196);
+const vec3 sky4 = vec3(0.3294, 0.1059, 0.5882);
+
+vec3 skyPalette(float t) {
+    if(t < 0.2) {
+        return mix(sky4, sky0, t / 0.2);
+    }
+    else if(t < 0.4) {
+        return mix(sky4, sky3, (t - 0.2) / 0.2);
+    }
+    else if(t < 0.6) {
+        return mix(sky3, sky2, (t - 0.4) / 0.2);
+    }
+    else if(t < 0.8) {
+        return mix(sky2, sky1, (t - 0.6) / 0.2);
+    }
+    else if(t < 1.0) {
+        return mix(sky1, sky4, (t - 0.8) / 0.2);
+    }
+}
+
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord ){
+        //Background Sky Texture
+   vec2 uv = fragCoord/iResolution.xy;
+   vec2 st = vec2(((fragCoord.x + (iTime*15.0)) / iResolution.x), fragCoord.y / iResolution.y);
+   vec3 color = vec3(0.0);
+   color += fbm(st * 3.0 );
+   color *= vec3(0.5922, 0.5373, 0.4196); // add some color so its not pure black and white
+   color *= gain(0.75, 0.75); // add contrast // previously 1.0, 0.75
+   color *= skyPalette(color.z); // prev color.x
+
+    
+     fragColor = vec4(color,1.0);
+
+}
+///////////////////////////////////////////////////// Buffer B /////////////////////////////////////////////////////////////////////////
+const int MAX_RAY_STEPS = 300;//256;
+const float MIN_DIST = 0.0;
+const float MAX_DIST = 100.0;
+const float EPSILON = 0.0001;
+
+// this buffer handles all geometry (besides fireflies)
+
+//stars https://www.shadertoy.com/view/Xlc3Rf
+//hexagon shape flair
+float flare( vec2 U )                            
+{	vec2 A = sin(vec2(0, 1.57));
+    U = abs( U * mat2(A, -A.y, A.x) ) * mat2(2,0,1,1.7); 
+    return 0.2/max(U.x,U.y) / 2.0; //spike shape approx of step(max,.2)
+
+ 
+}
+
+#define r(x)     fract(1e4*sin((x)*541.17))      // rand, signed rand   in 1, 2, 3D.
+#define sr2(x)   ( r(vec2(x,x+.1)) *2.-1. )
+#define sr3(x)   ( r(vec4(x,x+.1,x+.2,0)) *2.-1. )
+
+vec4 stars( vec4 O, vec2 U )
+{
+    vec2 R = iResolution.xy;
+    U =  (U+U - R) / R.y;
+	O -= O+.3;
+    
+    for (float i=0.; i<99.; i++){     
+        O += flare(U - sr2(i)*R/R.y )
+              * r(i+.2)// random scale
+              * (0.1)
+              * (1.+.1*sr3(i)); // random color - correlated
+    }
+
+    return O;
+}
+
+#define PI 3.141592
+// random, noise, and fbm from Book of Shaders
+float randomFunc (in vec2 st) {
+    return fract(sin(dot(st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+}
+
+// for deforming geometry
+float geomNoise (in vec2 st) {
+    vec2 i = floor(st);
+    vec2 f = fract(st);
+
+    // Four corners in 2D of a tile
+    float a = randomFunc(i);
+    float b = randomFunc(i + vec2(1.0, 0.0));
+    float c = randomFunc(i + vec2(0.0, 1.0));
+    float d = randomFunc(i + vec2(1.0, 1.0));
+
+    vec2 u = f * f * (3.0 - 2.0 * f);
+
+    return mix(a, b, u.x) +
+            (c - a)* u.y * (1.0 - u.x) +
+            (d - b) * u.x * u.y;
+}
+
+
+//rotation
+vec2 rotateFunc(vec2 v, float y){
+    return cos(y)*v + sin(y)*vec2(-v.y, v.x);
+}
+
+mat2 rot(float x) {return mat2(cos(x), sin(x), -sin(x), cos(x));}
+
+// polynomial smooth min (k = 0.1);
+float smin( float a, float b, float k )
+{
+    float h = clamp( 0.5+0.5*(b-a)/k, 0.0, 1.0 );
+    return mix( b, a, h ) - k*h*(1.0-h);
+}
+
+//Union
+float unionOp( float d1, float d2 ){
+    //return min(d1,d2);
+    return smin(d1, d2, 0.1);
+}
+
+//Substraction d2 - d1
+float subtractionOp( float d1, float d2 ){
+    return max(-d1,d2);
+}
+
+
+// smooth union function
+float smoothUnion( float d1, float d2, float k ) {
+    float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return mix( d2, d1, h ) - k*h*(1.0-h); }
+
+// returns the vector belonging to the lowest x value
+vec3 getMinVec(vec3 a, vec3 b){
+    if (a.x < b.x){
+        return a;
+    }
+
+    return b;
+}
+
+// dot of self
+float dot2(vec2 x){
+    return dot(x,x);
+}
+
+
+float cappedConeSDF( in vec3 p, in float h, in float r1, in float r2 )
+{
+    vec2 q = vec2( length(p.xz), p.y );
+    
+    vec2 k1 = vec2(r2,h);
+    vec2 k2 = vec2(r2-r1,2.0*h);
+    vec2 ca = vec2(q.x-min(q.x,(q.y < 0.0)?r1:r2), abs(q.y)-h);
+    vec2 cb = q - k1 + k2*clamp( dot(k1-q,k2)/dot2(k2), 0.0, 1.0 );
+    float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
+    return s*sqrt( min(dot2(ca),dot2(cb)) );
+}
+
+// Sphere
+float sphereSDF(vec3 point, float r){
+  return length(point) - r;
+}
+
+// torus
+float torusSDF(vec3 p, vec2 t) {
+	vec2 q = vec2(length(p.xz) - t.x, p.y);
+	return length(q) - t.y;
+}
+
+// Apple
+float appleSDF(vec3 p, float r) {
+    
+	p.y *= 0.95;
+	p.xz *= 1.2;
+
+	float k = 0.84 + 0.16 * smoothstep(-r, r, p.y);
+	p.xz /= k;
+	return torusSDF(p, vec2((0.9 / 1.25) * r, r));
+}
+
+// Ellipsoid
+float ellipsoidSDF(in vec3 p, in vec3 r)
+{
+  float k0 = length(p/r);
+  float k1 = length(p/(r*r));
+  return k0 * (k0 - 1.0) / k1;
+}
+// Box
+float boxSDF( vec3 p, vec3 b )
+{
+    vec3 d = abs(p) - b;
+    return min(max(d.x,max(d.y,d.z)),0.0) + length(max(d,0.0));
+}
+// Noisy Box
+float noisyBoxSDF( vec3 p, vec3 b )
+{
+    float n = clamp(geomNoise(p.xz), 0.0,1.0);
+    vec3 d = abs(vec3(p.x, p.y-(n*0.1), p.z)) - b;
+    return min(max(d.x,max(d.y,d.z)),0.0) + length(max(d,0.0));
+}
+
+
+// h.x is radius/width
+// h.y is height
+float cappedCylinderSDF( vec3 p, vec2 h )
+{
+  vec2 d = abs(vec2(length(p.xz),p.y)) - h;
+  return min(max(d.x,d.y),0.0) + length(max(d,0.0));
+}
+
+// toolbox functions
+float squareWave(float x, float freq, float amp){
+    return abs(mod(floor(x * freq), 2.0) * amp);
+}
+float sawtoothWave(float x, float freq, float amp){
+    return (x * freq - floor(x * freq)) * amp;
+}
+// -------------------------------
+
+const mat3 m = mat3( 0.64,  0.80,  0.60,
+                    -0.80,  0.36, -0.48,
+                    -0.60, -0.48,  0.64 );
+// hash function from IQ shader
+float hash( float n )
+{
+    return fract(sin(n)*4121.15393);
+}
+// noise from IQ shader
+float noise( in vec3 x )
+{
+    vec3 p = floor(x);
+    vec3 f = fract(x);
+
+    f = f*f*(3.0-2.0*f);
+
+    float n = p.x + p.y*157.0 + 113.0*p.z;
+
+    return mix(mix(mix( hash(n+  0.0), hash(n+  1.0),f.x),
+                   mix( hash(n+157.0), hash(n+158.0),f.x),f.y),
+               mix(mix( hash(n+113.0), hash(n+114.0),f.x),
+                   mix( hash(n+270.0), hash(n+271.0),f.x),f.y),f.z);
+}
+//FBM Func from IQ shader
+float fbm( vec3 p )
+{
+    float f = 0.0;
+
+    f += 0.5000*noise( p ); p = m*p*2.02;
+    f += 0.2500*noise( p ); p = m*p*2.03;
+    f += 0.1250*noise( p ); p = m*p*2.01;
+    f += 0.0625*noise( p );
+
+    return f/0.9375;
+}
+
+vec3 sceneSDF(vec3 point) {
+
+    vec3 gAOffset = vec3(2.0, -0.75, 1.5);// y was -.5
+    vec3 p = point;
+    vec3 p2 = point;
+    float y = 1.0 - (sin(iTime* 0.45) + 1.0);
+    float x = 1.0 - (-sin(iTime* 0.25) + 1.0);
+
+    p.xy *= rot(sin(iTime * 1.0));
+    p.xz *= rot(cos(iTime * 1.0));
+    p2.y += y;
+
+    
+  float testShape = appleSDF(point - vec3(5.0, -0.5, 0.0), 1.28);//red apple
+  float greenApple = appleSDF(point - gAOffset, 1.18);
+  float theFloor = boxSDF(point-vec3(0,-3.0,0), vec3(30.0,1.0,30.0));
+   
+  vec3 blanketPoint = point-vec3(0,-3.0,0);     
+  float floorBlanket =  noisyBoxSDF(blanketPoint , vec3(6.0,1.0,6.0));
+  // apple stems
+  float stem = cappedCylinderSDF(point - vec3(5.0, 0.25, 0.0), vec2(0.12, 1.0));
+  float greenStem = cappedCylinderSDF(point - vec3(gAOffset.x, -0.20, gAOffset.z), vec2(0.135, 1.0));
+  // bucket
+    vec3 p3 = point - vec3(-5.2 , -0.2, -4.0);
+    p3.yz = rotateFunc(p3.yz, -1.42353); 
+    p3.xy = rotateFunc(p3.xy, 0.68942);
+    float bucket = cappedConeSDF(p3, 1.0 *2.0, 0.75 *2.0, 1.0 *2.0);   
+    float innerBucket = cappedConeSDF(p3, 1.0 *2.0, 0.65 *2.0, 0.90 *2.0); 
+    float testSphere = sphereSDF(point -vec3(-4.35 , -0.05, -3.0), 1.80);
+    bucket = subtractionOp(testSphere, bucket);
+    
+    
+    // bucket apples
+  // orient apples 
+  vec3 p6 = point- vec3(-3.5, -1.0, -2.25);
+  p6.yz = rotateFunc(p6.yz, -.432);
+  float a1 = appleSDF(p6 , 0.75); // small red
+  float a1Stem = cappedCylinderSDF(p6 , vec2(0.09, 1.0));
+  vec3 p5 = point- vec3(-1.75, -1.0, -3.0);
+  p5.yz = rotateFunc(p5.yz, -1.42353);
+  p5.xy = rotateFunc(p5.xy, 0.354);
+  float a2 = appleSDF(p5 - vec3(0.0, 0.0, 0.15), 0.65); // small yellow
+  float a2Stem = cappedCylinderSDF(p5- vec3(0.0, 0.0, 0.15) , vec2(0.08, 1.0));
+  p5.xy = rotateFunc((p5 - vec3(2.0, 0.0, 2.0)).xy, -0.354 * 2.0);
+  float a3 = appleSDF(p5, 0.65); //small dark red
+  float a3Stem = cappedCylinderSDF(p5 , vec2(0.09, 1.0));
+    
+    // clump of weeds
+    vec3 wP = point - vec3(-4.1,-1.75,5.99);
+    float w1 = ellipsoidSDF(wP - vec3(0.0, -0.2, 0.0), vec3(0.075, 0.45, 0.07));//middle blade
+    vec3 wPTilt = wP - vec3(-0.4,0.0,0.0); // left blade of grass
+    wPTilt.xy = rotateFunc(wP.xy, -0.698132 );
+    float w2 = ellipsoidSDF(wPTilt - vec3(-0.2, -0.2, 0.0)  ,  vec3(0.07, 0.45, 0.07));
+    vec3 wPTilt2 = wP - vec3(0.4,0.0,0.0); // right blade of grass
+    wPTilt2.xy = rotateFunc(wP.xy, 0.698132 );
+    float w3 = ellipsoidSDF(wPTilt2 - vec3(0.2, -0.37, 0.0)  ,  vec3(0.08, 0.55, 0.08)); 
+    
+    
+    float shadowTree = boxSDF(point - vec3(-3.0, -0.8, -20.0), vec3(1.0, 10.0, 0.25)); // left from center
+    float shadowTree2 = boxSDF(point - vec3(-11, -0.8, -21.0), vec3(2.25, 10.0, 0.25)); // left most tree
+    float shadowTree3 = boxSDF(point - vec3(-5.7, -0.8, -20.0), vec3(0.65, 10.0, 0.25)); //skinny back
+    float shadowTree4 = boxSDF(point - vec3(11.15, -0.8, -21.0), vec3(2.05, 10.0, 0.25)); // right tree
+    float shadowTreeback = boxSDF(point - vec3(0.0, -3.5, -10.75), vec3(50.00, 3.0, 0.25));
+    shadowTree = unionOp(shadowTree, shadowTree2);
+    shadowTree = unionOp(shadowTree, shadowTree3);
+    shadowTree = unionOp(shadowTree, shadowTree4);
+    float shadowTree2Bottom = boxSDF(point - vec3(-9.95, -0.8, -14.0), vec3(1.0, 3.0, 0.25)); // left most tree bottom
+     shadowTree = unionOp(shadowTree, shadowTree2Bottom);
+ 
+    
+
+
+    vec3 returnVec = vec3(testShape, 2.2, 0.0);
+    returnVec = getMinVec(returnVec, vec3(theFloor,1.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(greenApple,2.9, 0.0));
+    returnVec = getMinVec(returnVec, vec3(stem,4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(greenStem, 4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(bucket, 6.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(floorBlanket, 7.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(a1,2.0, 0.0));  //2.5, 2.75, 2.9 other apple colors
+    returnVec = getMinVec(returnVec, vec3(a2,2.75, 0.0)); 
+    returnVec = getMinVec(returnVec, vec3(a3,3.0, 0.0)); 
+    returnVec = getMinVec(returnVec, vec3(a1Stem, 4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(a2Stem, 4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(a3Stem, 4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(w1, 0.0, 0.0)); //middle grass clump
+    returnVec = getMinVec(returnVec, vec3(w2, 0.0, 0.0)); //left grass clump
+    returnVec = getMinVec(returnVec, vec3(w3, 0.0, 0.0)); //right grass clump
+    returnVec = getMinVec(returnVec, vec3(shadowTree, 8.0, 0.0)); // trees
+
+    return returnVec;
+}
+
+// only use these shapes to cast shadows
+vec3 sceneSDFShadows(vec3 point) {
+
+    vec3 gAOffset = vec3(2.0, -0.75, 1.5);// y was -.5
+    vec3 p = point;
+    vec3 p2 = point;
+    float y = 1.0 - (sin(iTime* 0.45) + 1.0);
+    float x = 1.0 - (-sin(iTime* 0.25) + 1.0);
+    p.xy *= rot(sin(iTime * 1.0));
+    p.xz *= rot(cos(iTime * 1.0));
+    p2.y += y;
+  
+  float testShape = appleSDF(point - vec3(5.0, -0.5, 0.0), 1.28);//red apple
+  float greenApple = appleSDF(point - gAOffset, 1.18);
+  float theFloor = boxSDF(point-vec3(0,-3.0,0), vec3(30.0,1.0,30.0));
+  float floorBlanket =  noisyBoxSDF(point-vec3(0,-3.0,0), vec3(6.0,1.0,6.0));
+  // apple stems
+  float stem = cappedCylinderSDF(point - vec3(5.0, 0.25, 0.0), vec2(0.12, 1.0));
+  float greenStem = cappedCylinderSDF(point - vec3(gAOffset.x, -0.20, gAOffset.z), vec2(0.135, 1.0));
+  // bucket
+    vec3 p3 = point - vec3(-5.2, -0.2, -4.0);
+    p3.yz = rotateFunc(p3.yz, -1.42353); //-1.48353
+    p3.xy = rotateFunc(p3.xy, 0.68942);
+    float bucket = cappedConeSDF(p3, 1.0 *2.0, 0.75 *2.0, 1.0 *2.0);   
+    float innerBucket = cappedConeSDF(p3, 1.0 *2.0, 0.65 *2.0, 0.90 *2.0); 
+    float testSphere = sphereSDF(point -vec3(-4.35, -0.05, -3.0), 1.80);
+    bucket = subtractionOp(testSphere, bucket); 
+    // bucket apples
+  // orient apples 
+  vec3 p6 = point- vec3(-3.5, -1.0, -2.25);
+  p6.yz = rotateFunc(p6.yz, -.432);
+  float a1 = appleSDF(p6 , 0.75); // small red
+  float a1Stem = cappedCylinderSDF(p6 , vec2(0.09, 1.0));
+  vec3 p5 = point- vec3(-1.75, -1.0, -3.0);
+  p5.yz = rotateFunc(p5.yz, -1.42353);
+  p5.xy = rotateFunc(p5.xy, 0.354);
+  float a2 = appleSDF(p5 - vec3(0.0, 0.0, 0.15), 0.65); // small yellow
+  float a2Stem = cappedCylinderSDF(p5- vec3(0.0, 0.0, 0.15) , vec2(0.08, 1.0));
+  p5.xy = rotateFunc((p5 - vec3(2.0, 0.0, 2.0)).xy, -0.354 * 2.0);
+  float a3 = appleSDF(p5, 0.65); //small dark red
+  float a3Stem = cappedCylinderSDF(p5 , vec2(0.09, 1.0));  
+    // clump of weeds
+    vec3 wP = point - vec3(-4.1,-1.75,5.99);
+    float w1 = ellipsoidSDF(wP - vec3(0.0, -0.2, 0.0), vec3(0.075, 0.45, 0.07));//middle blade
+    vec3 wPTilt = wP - vec3(-0.4,0.0,0.0); // left blade of grass
+    wPTilt.xy = rotateFunc(wP.xy, -0.698132 );
+    float w2 = ellipsoidSDF(wPTilt - vec3(-0.2, -0.2, 0.0)  ,  vec3(0.07, 0.45, 0.07));
+    vec3 wPTilt2 = wP - vec3(0.4,0.0,0.0); // right blade of grass
+    wPTilt2.xy = rotateFunc(wP.xy, 0.698132 );
+    float w3 = ellipsoidSDF(wPTilt2 - vec3(0.2, -0.37, 0.0)  ,  vec3(0.08, 0.55, 0.08)); 
+    
+    vec3 returnVec = vec3(testShape, 2.0, 0.0);
+    returnVec = getMinVec(returnVec, vec3(theFloor,1.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(greenApple,2.9, 0.0));
+    returnVec = getMinVec(returnVec, vec3(stem,4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(greenStem, 4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(bucket, 6.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(floorBlanket, 7.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(a1,2.0, 0.0));  //2.5, 2.75, 2.9 other apple colors
+    returnVec = getMinVec(returnVec, vec3(a2,2.75, 0.0)); 
+    returnVec = getMinVec(returnVec, vec3(a3,3.0, 0.0)); 
+    returnVec = getMinVec(returnVec, vec3(a1Stem, 4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(a2Stem, 4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(a3Stem, 4.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(w1, 0.0, 0.0)); //middle grass clump
+    returnVec = getMinVec(returnVec, vec3(w2, 0.0, 0.0)); //left grass clump
+    returnVec = getMinVec(returnVec, vec3(w3, 0.0, 0.0)); //right grass clump
+
+    return returnVec;
+}
+
+
+
+vec3 calcNormal(vec3 pos) {
+    vec3 eps = vec3(0.001, 0.0, 0.0);
+    float epsFloat = 0.0001;
+    vec3 normal =  normalize(vec3(
+        sceneSDF(vec3(pos.x + epsFloat, pos.y, pos.z)).x - sceneSDF(vec3(pos.x - epsFloat, pos.y, pos.z)).x,
+        sceneSDF(vec3(pos.x, pos.y + epsFloat, pos.z)).x - sceneSDF(vec3(pos.x, pos.y - epsFloat, pos.z)).x,
+        sceneSDF(vec3(pos.x, pos.y, pos.z + epsFloat)).x - sceneSDF(vec3(pos.x, pos.y, pos.z - epsFloat)).x
+    ));
+
+    return normal;
+}
+
+//for color remapping
+// Cosine palette variables
+const vec3 a = vec3(0.8, 0.5, 0.4);
+const vec3 b = vec3(0.2, 0.4, 0.2);
+const vec3 c = vec3(2.0, 1.0, 1.0);
+const vec3 d = vec3(0.00, 0.25, 0.25);
+
+vec3 cosinePalette(float t) {
+    return a + b * cos(6.2831 * (c * t + d));
+}
+
+// -------------------------------
+
+vec3 appleColor(vec3 baseCol, vec3 pos, vec3 nor){
+
+    float a = atan(pos.x,pos.z);
+    float r = length(pos.xz);
+
+    // red base color
+    vec3 col = vec3(baseCol);
+    // use cosine palette to remap colors to different shades of base color
+    float noise = smoothstep(0.0, 1.0, fbm(pos *9.0));
+    col += cosinePalette(baseCol.x * noise)/ 4.5; 
+   
+    // dirty noise coloring on surface
+    float f = smoothstep( 0.0, 1.0, fbm(pos*4.0) );
+    col *= 0.8; //darkens the coloring
+    col += 0.15*f; // adds in the noise variation
+
+    // stripes    
+    float rad2 = 1.28 * 2.0; // 1.18 is the apple radius
+	vec2 uv = vec2((pos.y - rad2) / rad2, atan(pos.z, pos.x) / PI + 0.5);
+	uv.x *= 0.02;
+	float rs = fbm(pos* vec3(uv.x));
+	col = mix(vec3(0.561, 0.278, 0.141), col, 0.7 + 0.3 * rs);
+
+	// ao approx
+    float ao = 0.5 + 0.5*nor.y;
+    col *= ao*1.5;
+
+    return col;
+}
+
+vec3 appleColorYellow(vec3 baseCol, vec3 pos, vec3 nor){
+
+    float a = atan(pos.x,pos.z);
+    float r = length(pos.xz);
+    
+    vec3 col = vec3(baseCol);
+   
+    // dirty noise coloring on surface
+    float f = smoothstep( 0.0, 1.0, fbm(pos*4.0) );
+    col *= 0.8; //darkens the coloring
+    col += 0.15*f; // adds in the noise variation
+    
+    // use cosine palette to remap colors to different shades of base color
+    float noise = smoothstep(0.0, 1.0, fbm(pos *9.0));
+    col += cosinePalette(baseCol.x * noise)/ 9.5; 
+
+    // stripes    
+    float rad2 = 1.28 * 2.0; // 1.18 is the apple radius
+	vec2 uv = vec2((pos.y - rad2) / rad2, atan(pos.z, pos.x) / PI + 0.5);
+	uv.x *= 0.02;
+	float rs = fbm(pos* vec3(uv.x));
+	col = mix(vec3(0.561, 0.278, 0.141), col, 0.7 + 0.3 * rs);
+
+	// ao approx
+    float ao = 0.5 + 0.5*nor.y;
+    col *= ao*1.5;
+
+    return col;
+}
+float random (in vec2 st) {
+    return fract(sin(dot(st.xy,
+                         vec2(12.9898,78.233))) * 43758.5453123);
+}
+
+vec3 getColors(float c, float lightTerm, float spec, vec3 point, vec3 normals, float shadow,
+              vec3 backgroundColor, float fogTerm, vec4 starVec, vec2 uv, vec3 eye){
+    
+   
+    lightTerm *= 1.0; // tune the intensity of the light coming from the right
+    float ambientTerm = 0.18;
+    vec3 lightCol1 = vec3(0.8, 0.8, 1.0); //blueish
+    
+    //additional light sources
+    // light source 2, from the left
+    vec3 lightVec2 = vec3(-1.0, 1.0, 0.5);// opposite direction, fill light
+    vec3 lightCol2 = vec3(0.2, 0.0, 1.0);
+    float diffuseTerm2 = dot(normalize(normals), normalize(lightVec2));
+    diffuseTerm2 = clamp(diffuseTerm2, 0.0, 1.0);
+    float lightIntensity2 = diffuseTerm2 + ambientTerm;
+    lightIntensity2 *= 0.025; //turn the intensity down
+    
+    //light source 3, from the front
+    vec3 lightVec3 = eye;
+    vec3 lightCol3 = vec3(0.0, 0.0, 1.0);
+    float diffuseTerm3 = dot(normalize(normals), normalize(lightVec2));
+    diffuseTerm3 = clamp(diffuseTerm3, 0.0, 1.0);
+    float lightIntensity3 = diffuseTerm3 + ambientTerm;
+    lightIntensity3 *= 0.15; //turn the intensity down
+    
+    
+     
+    vec3 theColor = vec3(0.0);
+    // weed clump
+    if (c == 0.0){
+        theColor = vec3(0.0863, 0.3333, 0.0235) * lightTerm * lightCol1;
+        theColor += lightIntensity2 * lightCol2; // add fill light
+        theColor += lightIntensity3 * lightCol3; // add front light
+        return theColor;
+    }
+    // floor ground color
+    if (c == 1.0){
+        float f = smoothstep( 0.0, 1.0, fbm(point*40.0) );
+        theColor = vec3(0.0431, 0.7529, 0.2824); 
+
+        theColor *= f;
+        theColor += vec3(0.0, 1.0, 0.0);
+        //theColor *= lightTerm *1.2;
+        theColor *= lightTerm * 0.60 * lightCol1;
+        theColor += lightIntensity2 * lightCol2; // add fill light
+        theColor += lightIntensity3 * lightCol3; // add front light
+        theColor *= shadow;
+        
+        //for correcting the background with stars for blending with ground
+        backgroundColor += mix(starVec.rgb, backgroundColor, (1.0- uv.y)/ 2.0); // add stars onto the sky coloring
+        theColor = mix(theColor, backgroundColor, fogTerm); // add distance fog between the ground plane and the sky
+        
+        return theColor ;
+    }
+    // small red apple
+    if (c == 2.0){
+        theColor = appleColor(vec3(1.0,0.0,0.0),point, normals) * lightTerm * lightCol1 + (spec/ 2.5);
+        theColor += lightIntensity2 * lightCol2; // add fill light
+        theColor += lightIntensity3 * lightCol3; // add front light
+
+        return theColor ;
+    }
+    // big red apple
+     if (c == 2.2){
+        theColor = appleColor(vec3(1.0,0.0,0.0),point, normals) * lightTerm * lightCol1;
+        theColor += lightIntensity2 * lightCol2; // add fill light
+        theColor += lightIntensity3 * lightCol3; // add front light
+
+        return theColor ;
+    }
+     // orange-red apple
+    if (c == 2.5){
+        theColor = appleColor(vec3(0.9804, 0.3176, 0.0588),point, normals) * lightTerm * lightCol1;
+         theColor += lightIntensity2 * lightCol2; // add fill light
+         theColor += lightIntensity3 * lightCol3; // add front light
+        return theColor *shadow;
+    }
+    // yellw apple
+    if (c == 2.75){
+        theColor = appleColorYellow(vec3(0.9804, 0.9647, 0.0588),point, normals) * lightTerm * lightCol1;
+        theColor += lightIntensity2 * lightCol2; // add fill light
+        theColor += lightIntensity3 * lightCol3; // add front light
+        return theColor *shadow;
+    }
+    // light green
+     if (c == 2.9){
+        theColor = appleColor(vec3(0.3686, 0.9529, 0.2902),point, normals) * lightTerm * lightCol1;
+        theColor += lightIntensity2 * lightCol2; // add fill light
+        theColor += lightIntensity3 * lightCol3; // add front light
+        return theColor;
+    }
+    // dark red apple
+    if (c == 3.0){
+        //theColor = vec3(0.2667, 1.0, 0.5137) * lightTerm;
+         theColor = appleColor(vec3(0.6588, 0.0, 0.0),point, normals) * lightTerm * lightCol1;
+         theColor += lightIntensity2 * lightCol2; // add fill light
+         theColor += lightIntensity3 * lightCol3; // add front light
+
+        return theColor *shadow;
+    }
+    // stem
+     if (c == 4.0){
+        //theColor = vec3(0.5686, 0.4627, 0.0) * lightTerm;
+        float f = smoothstep( 0.0, 1.0, fbm(point*4.0) );
+    	theColor = vec3(0.5686, 0.4627, 0.0); // brown
+    	theColor *= f;// Add noise to color
+        theColor *= lightTerm* lightCol1 *shadow;
+        theColor += lightIntensity2 * lightCol2; // add fill light
+        theColor += lightIntensity3 * lightCol3; // add front light
+        
+         return theColor;
+    }
+    // firefly
+     if (c == 5.0){
+        theColor = vec3(1.0, 1.0, 0.0);
+        return mix(theColor,  backgroundColor, sin(iTime*.93 + point.z));
+    }
+    // bucket
+    if (c == 6.0){
+      	  theColor = vec3(0.5804, 0.3098, 0.0);// brown  
+         // noise
+         float noise = smoothstep(0.0, 1.0, fbm(vec3(normals.x,normals.y, point.z * 50.0 )));
+         float noise2 = smoothstep(0.0, 1.0, fbm(vec3(noise / 10.0, noise, noise * 20.0)));
+     	 theColor += 0.11 *(noise *10.0) * fract(noise2);
+         theColor *= vec3(0.8078, 0.4353, 0.0078); // mult by more brown to darken the color
+        
+        // ao approx
+   		 float ao = 0.5 + 0.5*normals.y;
+   		 theColor *= ao*1.5; 
+        
+         theColor += lightIntensity2 * lightCol2; // add fill light
+         theColor += lightIntensity3 * lightCol3; // add front light
+        
+    	return theColor *shadow * lightCol1;
+    }
+    // picnic blanket color
+    if (c == 7.0){
+        float t = floor(mod((sin(point.x*1.75) + sin(point.z*1.75)) * 0.5, 2.0));
+        //theColor = mix(vec3(0.9, 0.0, 0.0), vec3(1.0), t)* lightTerm * 4.0 ;
+         theColor = mix(vec3(0.9, 0.0, 0.0), vec3(1.0), t)* lightTerm * 1.0 ;
+        float noise = smoothstep( 0.0, 1.0, fbm(point*4.0) );
+        theColor *= 0.8; //darkens the coloring
+        theColor += 0.25*noise; // adds in the noise variation 
+   
+         theColor += lightIntensity2 * lightCol2; // add fill light
+         theColor += lightIntensity3 * lightCol3; // add front light
+        
+        return theColor *shadow * lightCol1;
+    }
+    // shadowy trees
+    if (c == 8.0){
+        theColor = vec3(0.0902, 0.0078, 0.1412);  
+        
+        return theColor;
+    }
+  
+    
+    return vec3(c / 10.0) * lightTerm;
+}
+
+
+
+//soft shadow method from shadertoy linked in slides
+float softShadow(vec3 dir, vec3 origin, float min_t, float k) {
+    float res = 1.0;
+    
+    for(float t = min_t; t < 256.0;) {
+        
+        float m = sceneSDFShadows(origin + t * dir).x;
+        
+        if(m < 0.0001) {
+            return 0.25; // 0.0 for pure black
+        }
+        res = min(res, k * m / t);
+        t += m;
+    }
+    return res;
+}
+
+
+// get the image Buffer channel0 and blur it
+vec3 getBlurryBackground(vec2 fragCoords){
+    //Guasiian Blur
+     vec2 uv = fragCoords/iResolution.xy;
+ // row 1 of 5x5 pixel box
+     vec4 n11 = texture(iChannel0, vec2(uv.x - (2.0 / float(iResolution.x)), uv.y + (2.0 / float(iResolution.y))) );
+     vec4 n12 = texture(iChannel0, vec2(uv.x - (1.0 / float(iResolution.x)), uv.y +(2.0 / float(iResolution.y))) );
+     vec4 n13 = texture(iChannel0, vec2(uv.x, uv.y +(2.0 / float(iResolution.y))) );
+     vec4 n14 = texture(iChannel0, vec2(uv.x + (1.0 / float(iResolution.x)), uv.y +(2.0 / float(iResolution.y))) );
+     vec4 n15 = texture(iChannel0, vec2(uv.x + (2.0 / float(iResolution.x)), uv.y +(2.0 / float(iResolution.y))) );
+
+     //row 2 of 5x5 pixel box
+     vec4 n21 = texture(iChannel0, vec2(uv.x - (2.0 / float(iResolution.x)), uv.y +(1.0 / float(iResolution.y))));
+     vec4 n22 = texture(iChannel0, vec2(uv.x - (1.0 / float(iResolution.x)), uv.y +(1.0 / float(iResolution.y))));
+     vec4 n23 = texture(iChannel0, vec2(uv.x , uv.y +(1.0 / float(iResolution.y))) );
+     vec4 n24 = texture(iChannel0, vec2(uv.x + (1.0 / float(iResolution.x)), uv.y +(1.0 / float(iResolution.y))) );
+     vec4 n25 = texture(iChannel0, vec2(uv.x + (2.0 / float(iResolution.x)), uv.y +(1.0 / float(iResolution.y))) );
+
+     // row 3 of 5x5 pixel box
+     vec4 n31 = texture(iChannel0, vec2(uv.x - (2.0 / float(iResolution.x)), uv.y  ));
+     vec4 n32 = texture(iChannel0, vec2(uv.x - (1.0 / float(iResolution.x)), uv.y  ));
+     vec4 n33 = texture(iChannel0, vec2(uv.x , uv.y  ));
+     vec4 n34 = texture(iChannel0, vec2(uv.x + (1.0 / float(iResolution.x)), uv.y  ));
+     vec4 n35 = texture(iChannel0, vec2(uv.x + (2.0 / float(iResolution.x)), uv.y  ));
+
+     // row 4 of 5x5 pixel box
+     vec4 n41 = texture(iChannel0, vec2(uv.x - (2.0 / float(iResolution.x)), uv.y -(1.0 / float(iResolution.y))) );
+     vec4 n42 = texture(iChannel0, vec2(uv.x - (1.0 / float(iResolution.x)), uv.y -(1.0 / float(iResolution.y))) );
+     vec4 n43 = texture(iChannel0, vec2(uv.x, uv.y -(1.0 / float(iResolution.y))) );
+     vec4 n44 = texture(iChannel0, vec2(uv.x + (1.0 / float(iResolution.x)), uv.y -(1.0 / float(iResolution.y))) );
+     vec4 n45 = texture(iChannel0, vec2(uv.x + (2.0 / float(iResolution.x)), uv.y -(1.0 / float(iResolution.y))) );
+
+
+     // row 5 of 5x5 pixel box
+     vec4 n51 = texture(iChannel0, vec2(uv.x - (2.0 / float(iResolution.x)), uv.y -(2.0 / float(iResolution.y))) );
+     vec4 n52 = texture(iChannel0, vec2(uv.x - (1.0 / float(iResolution.x)), uv.y -(2.0 / float(iResolution.y))) );
+     vec4 n53 = texture(iChannel0, vec2(uv.x, uv.y -(2.0 / float(iResolution.y))) );
+     vec4 n54 = texture(iChannel0, vec2(uv.x + (1.0 / float(iResolution.x)), uv.y -(2.0 / float(iResolution.y))) );
+     vec4 n55 = texture(iChannel0, vec2(uv.x + (2.0 / float(iResolution.x)), uv.y -(2.0 / float(iResolution.y))) );
+
+
+
+     // kernel = 5, sigma = 50
+     vec4 finalColor = vec4( (.039968) * n11 + (.039992) * n12 + (.04) * n13 + (.039992) * n14 + (.039968) * n15 +
+                             (.039992) * n21 + (.040016) * n22 + (.040024) * n23 + (.040016) * n24 + (.039992) * n25 +
+                             (.04) * n31 + (.040024) * n32 + (.040032) * n33 + (.040024) * n34 + (.04) * n35 +
+                             (.039992) * n41 + (.040016) * n42 + (.040024) * n43 + (.040016) * n44 + (.039992) * n45 +
+                             (.039968) * n51 + (.039992) * n52 + (.04) * n53 + (.039992) * n54 + (.039968) * n55
+
+                             );
+
+
+    return vec3(finalColor.xyz);
+}
+
+
+// return vec3
+// .x is float intersection, .y is colorID
+vec3 rayMarch(vec3 pos, vec3 marchingDirection, float start, float end) {
+ 
+    float depth = start;
+    float dist = 0.0;
+    float col= 0.0;
+
+  vec3 temp = vec3(0.0);
+
+    for (int i = 0; i < MAX_RAY_STEPS; i++) {
+      temp = sceneSDF(pos + depth * marchingDirection);
+        dist = temp.x;
+        col = temp.y;    
+
+        if (dist < EPSILON) {
+            return vec3(depth, col, 0.0);
+        }
+        depth += dist;
+        if (depth >= end) {
+            return vec3(end, col, 0.0);
+        }
+    }
+    return vec3(end, col, 0.0);
+}
+
+
+//Return the normalized direction to march in from the eye point for a single pixel. 
+//fieldOfView, size: resolution of the output image, fragCoord
+vec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {
+    vec2 xy = fragCoord - size / 2.0;
+    float z = size.y / tan(radians(fieldOfView) / 2.0);
+    return normalize(vec3(xy, -z));
+}
+
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    // sahderToy stuff
+    // Normalized pixel coordinates (from 0 to 1)
+    vec2 uv = fragCoord/iResolution.xy;
+    // Time varying pixel color
+    vec3 col = 0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));
+    
+	// ------my stuff------------------------------------------------------
+	vec3 dir = rayDirection(45.0, iResolution.xy, fragCoord);
+	vec3 eye = vec3(0.0, 0.0, 20.0);
+	vec3 marchInfo = vec3(0.0);
+
+	// to draw shapes------------------------------------------------
+	// .x is the float intersection from raymarching, .y is the color ID
+	marchInfo = rayMarch(eye, dir, MIN_DIST, MAX_DIST);
+  	float dist = marchInfo.x;
+  	float colorTerm = marchInfo.y;
+    
+   	 if (dist > MAX_DIST - EPSILON) {
+    	 // Didn't hit anything, draw background 
+         vec3 sky = getBlurryBackground(vec2(fragCoord)); // get sky color from buffer A
+          vec4 starColor = stars(fragColor, fragCoord); // compute stars
+          sky = sky + mix(starColor.rgb, sky, (1.0- uv.y)/ 2.0); // add stars onto the sky coloring
+          fragColor = vec4(sky,1.0);      
+	 	  return;
+  	  }
+
+ 
+	// Lighting //vec3(6.0, 3.0, 5.0)
+	vec3 n = calcNormal(eye + marchInfo.x * dir);
+	vec3 lightVector = vec3(6.0, 3.0, 6.0) ;//eye + vec3(1.0 , 0.0, 0.0); // eye
+	// h is the average of the view and light vectors
+	vec3 h = (vec3(1.0, 1.0, 1.0) + lightVector)/ 2.0;//(eye + lightVector) / 2.0;
+	// specular intensity
+	float specularInt = max(pow(dot(normalize(h), normalize(n)), 30.0) , 0.0);  
+	// dot between normals and light direction
+	float diffuseTerm = dot(normalize(n), normalize(lightVector));
+	// Avoid negative lighting values
+	diffuseTerm = clamp(diffuseTerm, 0.0, 1.0);
+	float ambientTerm = 0.2;
+	float lightIntensity = diffuseTerm + ambientTerm;
+    //calculate shadow term
+    // soft shadows (direction, origin, min t, k)
+    vec3 dirForShadows = normalize(vec3(1.0, 1.0, 1.0));
+    float s=  softShadow(dirForShadows, eye + marchInfo.x * dir, 0.1, 6.0);
+    
+    float fog = smoothstep(27.0, 45.0, distance(eye + marchInfo.x * dir, eye));
+    vec3 bgColor = getBlurryBackground(vec2(fragCoord));
+    // vec3 bgColor = texture(iChannel0, uv).rgb; //sky with no blur
+    vec4 starColor = stars(fragColor, fragCoord); // compute stars
+    vec3 color = getColors(colorTerm, lightIntensity, specularInt,eye + marchInfo.x * dir, n, s,
+                           bgColor, fog, starColor, uv, eye);
+
+
+	fragColor = vec4(color, 1.0);
+    
+    
+}
+///////////////////////////////////////////////////// Buffer C /////////////////////////////////////////////////////////////////////////
+// seperate pass for the fireflies
+const int MAX_RAY_STEPS = 256;
+const float MIN_DIST = 0.0;
+const float MAX_DIST = 100.0;
+const float EPSILON = 0.0001;
+
+#define PI 3.141592
+
+//Substraction d2 - d1
+float subtractionOp( float d1, float d2 ){
+    return max(-d1,d2);
+}
+
+
+// random, noise, and fbm from Book of Shaders
+float randomFunc (in vec2 st) {
+    return fract(sin(dot(st.xy,
+                         vec2(12.9898,78.233)))*
+        43758.5453123);
+}
+
+// for deforming geometry
+float geomNoise (in vec2 st) {
+    vec2 i = floor(st);
+    vec2 f = fract(st);
+
+    // Four corners in 2D of a tile
+    float a = randomFunc(i);
+    float b = randomFunc(i + vec2(1.0, 0.0));
+    float c = randomFunc(i + vec2(0.0, 1.0));
+    float d = randomFunc(i + vec2(1.0, 1.0));
+
+    vec2 u = f * f * (3.0 - 2.0 * f);
+
+    return mix(a, b, u.x) +
+            (c - a)* u.y * (1.0 - u.x) +
+            (d - b) * u.x * u.y;
+}
+//rotation
+vec2 rotateFunc(vec2 v, float y){
+    return cos(y)*v + sin(y)*vec2(-v.y, v.x);
+}
+
+mat2 rot(float x) {return mat2(cos(x), sin(x), -sin(x), cos(x));}
+
+// returns the vector belonging to the lowest x value
+vec3 getMinVec(vec3 a, vec3 b){
+    if (a.x < b.x){
+        return a;
+    }
+
+    return b;
+}
+// h.x is radius/width
+// h.y is height
+float cappedCylinderSDF( vec3 p, vec2 h )
+{
+  vec2 d = abs(vec2(length(p.xz),p.y)) - h;
+  return min(max(d.x,d.y),0.0) + length(max(d,0.0));
+}
+
+// dot of self
+float dot2(vec2 x){
+    return dot(x,x);
+}
+
+
+float cappedConeSDF( in vec3 p, in float h, in float r1, in float r2 )
+{
+    vec2 q = vec2( length(p.xz), p.y );
+    
+    vec2 k1 = vec2(r2,h);
+    vec2 k2 = vec2(r2-r1,2.0*h);
+    vec2 ca = vec2(q.x-min(q.x,(q.y < 0.0)?r1:r2), abs(q.y)-h);
+    vec2 cb = q - k1 + k2*clamp( dot(k1-q,k2)/dot2(k2), 0.0, 1.0 );
+    float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
+    return s*sqrt( min(dot2(ca),dot2(cb)) );
+}
+// torus
+float torusSDF(vec3 p, vec2 t) {
+	vec2 q = vec2(length(p.xz) - t.x, p.y);
+	return length(q) - t.y;
+}
+
+// Apple
+float appleSDF(vec3 p, float r) {
+    
+	p.y *= 0.95;
+	p.xz *= 1.2;
+
+	float k = 0.84 + 0.16 * smoothstep(-r, r, p.y);
+	p.xz /= k;
+	return torusSDF(p, vec2((0.9 / 1.25) * r, r));
+}
+// Box
+float boxSDF( vec3 p, vec3 b )
+{
+    vec3 d = abs(p) - b;
+    return min(max(d.x,max(d.y,d.z)),0.0) + length(max(d,0.0));
+}
+
+// Noisy Box
+float noisyBoxSDF( vec3 p, vec3 b )
+{
+    float n = clamp(geomNoise(p.xz), 0.0,1.0);
+    vec3 d = abs(vec3(p.x, p.y-(n*0.1), p.z)) - b;
+    return min(max(d.x,max(d.y,d.z)),0.0) + length(max(d,0.0));
+}
+
+
+// Sphere
+float sphereSDF(vec3 point, float r){
+  return length(point) - r;
+}
+
+
+vec3 sceneSDF(vec3 point) {
+
+    vec3 gAOffset = vec3(2.0, -0.75, 1.5);// y was -.5
+    vec3 p = point;
+    vec3 p2 = point;
+    float y = 1.0 - (sin(iTime* 0.45) + 1.0);
+    float x = 1.0 - (-sin(iTime* 0.25) + 1.0);
+
+    p.xy *= rot(sin(iTime * 1.0));
+    p.xz *= rot(cos(iTime * 1.0 * geomNoise(vec2(2.5, 2.0))));//vec2(3.0, 2.0)
+    p2.y += y;
+    
+    
+    //fireflies
+    float f1 = sphereSDF(p - vec3(10.0, 2.5, -15.0) , 0.30); // leftmost
+    float f2 = sphereSDF(p2 - vec3(10.0, 2.5, -15.0) , 0.26); //rightmost firefly
+    p2.y += y*1.5 *1.2; // for back firefly
+    p2.x += x * 5.0; // x * 5.0
+    float f3 = sphereSDF(p2 - vec3(7.0, 2.5, -25.0) , 0.28);//middle firefly
+    
+    // geometry to color black so fireflies dont pass through these objects
+    //apples
+    float testShape = appleSDF(point - vec3(5.0, -0.5, 0.0), 1.28);//red apple
+    float greenApple = appleSDF(point - gAOffset, 1.18);
+    float stem = cappedCylinderSDF(point - vec3(5.0, 0.25, 0.0), vec2(0.12, 1.0));
+    float greenStem = cappedCylinderSDF(point - vec3(gAOffset.x, -0.20, gAOffset.z), vec2(0.135, 1.0));
+    // the groundplane and the blanket
+    float theFloor = boxSDF(point-vec3(0,-3.0,0), vec3(30.0,1.0,30.0));
+    float floorBlanket =  noisyBoxSDF(point-vec3(0,-3.0,0), vec3(6.0,1.0,6.0));
+    // bucket apples
+     vec3 p6 = point- vec3(-3.5, -1.0, -2.25);
+     p6.yz = rotateFunc(p6.yz, -.432);
+     float a1 = appleSDF(p6 , 0.75); // small red
+     float a1Stem = cappedCylinderSDF(p6 , vec2(0.09, 1.0));
+     vec3 p5 = point- vec3(-1.75, -1.0, -3.0);
+     p5.yz = rotateFunc(p5.yz, -1.42353);
+     p5.xy = rotateFunc(p5.xy, 0.354);
+     float a2 = appleSDF(p5 - vec3(0.0, 0.0, 0.15), 0.65); // small yellow
+     float a2Stem = cappedCylinderSDF(p5- vec3(0.0, 0.0, 0.15) , vec2(0.08, 1.0));
+     p5.xy = rotateFunc((p5 - vec3(2.0, 0.0, 2.0)).xy, -0.354 * 2.0);
+     float a3 = appleSDF(p5, 0.65); //small dark red
+     float a3Stem = cappedCylinderSDF(p5 , vec2(0.09, 1.0));
+ 
+
+    vec3 returnVec = vec3(f1, 5.0, 0.0);
+    returnVec = getMinVec(returnVec, vec3(f2, 5.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(f3, 5.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(testShape,0.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(greenApple,0.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(stem,0.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(greenStem, 0.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(floorBlanket, 0.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(theFloor, 0.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(a1,0.0, 0.0));  //2.5, 2.75, 2.9 other apple colors
+    returnVec = getMinVec(returnVec, vec3(a2,0.0, 0.0)); 
+    returnVec = getMinVec(returnVec, vec3(a1Stem, 0.0, 0.0));
+    returnVec = getMinVec(returnVec, vec3(a2Stem, 0.0, 0.0));
+  
+
+    return returnVec;
+}
+
+
+
+vec3 getColors(float c, vec3 backgroundColor, vec3 point){
+       
+    vec3 theColor = vec3(0.0);
+ 
+    // firefly
+     if (c == 5.0){
+        theColor = vec3(0.6784, 0.9686, 0.0);
+         
+         return mix(theColor,  backgroundColor, sin(iTime*.93 + point.z));
+    }
+     
+    return vec3(c / 10.0);
+}
+
+
+
+// return vec3
+// .x is float intersection, .y is colorID
+vec3 rayMarch(vec3 pos, vec3 marchingDirection, float start, float end) {
+ 
+    float depth = start;
+    float dist = 0.0;
+    float col= 0.0;
+
+  vec3 temp = vec3(0.0);
+
+    for (int i = 0; i < MAX_RAY_STEPS; i++) {
+      temp = sceneSDF(pos + depth * marchingDirection);
+        dist = temp.x;
+        col = temp.y;    
+
+        if (dist < EPSILON) {
+            return vec3(depth, col, 0.0);
+        }
+        depth += dist;
+        if (depth >= end) {
+            return vec3(end, col, 0.0);
+        }
+    }
+    return vec3(end, col, 0.0);
+}
+
+
+//Return the normalized direction to march in from the eye point for a single pixel. 
+//fieldOfView, size: resolution of the output image, fragCoord
+vec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {
+    vec2 xy = fragCoord - size / 2.0;
+    float z = size.y / tan(radians(fieldOfView) / 2.0);
+    return normalize(vec3(xy, -z));
+}
+
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    // sahderToy stuff
+    // Normalized pixel coordinates (from 0 to 1)
+    vec2 uv = fragCoord/iResolution.xy;
+    
+	// ------my stuff------------------------------------------------------
+	vec3 dir = rayDirection(45.0, iResolution.xy, fragCoord);
+	vec3 eye = vec3(0.0, 0.0, 20.0);
+	vec3 marchInfo = vec3(0.0);
+
+	// to draw shapes------------------------------------------------
+	// .x is the float intersection from raymarching, .y is the color ID
+	marchInfo = rayMarch(eye, dir, MIN_DIST, MAX_DIST);
+  	float dist = marchInfo.x;
+  	float colorTerm = marchInfo.y;
+    
+   	 if (dist > MAX_DIST - EPSILON) {
+    	 // Didn't hit anything, draw background 
+          fragColor = vec4(0.0, 0.0, 0.0,1.0);      
+	 	  return;
+  	  }
+
+    vec3 bgColor = vec3(0.0);
+    vec3 color = getColors(colorTerm, bgColor, eye + marchInfo.x * dir);
+
+
+	fragColor = vec4(color, 1.0);
+    
+    
+}
+/////////////////////////////////////////////////////  Image  /////////////////////////////////////////////////////////////////////////
+const float blurSize = 1.35/512.0;//1.0/512.0;
+const float intensity = 0.85;
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    vec2 uv = fragCoord/iResolution.xy;
+    vec4 texColor = texture(iChannel0, uv); // scene
+    
+    
+    vec4 fireflies = texture(iChannel2, uv); // scene//iChannel2 has fireflies
+
+// bloom effect ----------------------------------------------------------------------------------------    
+   vec4 sum = vec4(0);
+   vec2 texcoord = fragCoord.xy/iResolution.xy;
+
+   // bloom effect from https://www.shadertoy.com/view/lsXGWn
+   // blur in x (horizontal)
+   // take nine samples, with the distance blurSize between them
+   sum += texture(iChannel2, vec2(texcoord.x - 4.0*blurSize, texcoord.y)) * 0.05;
+   sum += texture(iChannel2, vec2(texcoord.x - 3.0*blurSize, texcoord.y)) * 0.09;
+   sum += texture(iChannel2, vec2(texcoord.x - 2.0*blurSize, texcoord.y)) * 0.12;
+   sum += texture(iChannel2, vec2(texcoord.x - blurSize,     texcoord.y)) * 0.15;
+   sum += texture(iChannel2, vec2(texcoord.x,                texcoord.y)) * 0.16;
+   sum += texture(iChannel2, vec2(texcoord.x + blurSize,     texcoord.y)) * 0.15;
+   sum += texture(iChannel2, vec2(texcoord.x + 2.0*blurSize, texcoord.y)) * 0.12;
+   sum += texture(iChannel2, vec2(texcoord.x + 3.0*blurSize, texcoord.y)) * 0.09;
+   sum += texture(iChannel2, vec2(texcoord.x + 4.0*blurSize, texcoord.y)) * 0.05;
+	
+	// blur in y (vertical)
+   // take nine samples, with the distance blurSize between them
+   sum += texture(iChannel2, vec2(texcoord.x, texcoord.y - 4.0*blurSize)) * 0.05;
+   sum += texture(iChannel2, vec2(texcoord.x, texcoord.y - 3.0*blurSize)) * 0.09;
+   sum += texture(iChannel2, vec2(texcoord.x, texcoord.y - 2.0*blurSize)) * 0.12;
+   sum += texture(iChannel2, vec2(texcoord.x, texcoord.y - blurSize    )) * 0.15;
+   sum += texture(iChannel2, vec2(texcoord.x, texcoord.y               )) * 0.16;
+   sum += texture(iChannel2, vec2(texcoord.x, texcoord.y + blurSize    )) * 0.15;
+   sum += texture(iChannel2, vec2(texcoord.x, texcoord.y + 2.0*blurSize)) * 0.12;
+   sum += texture(iChannel2, vec2(texcoord.x, texcoord.y + 3.0*blurSize)) * 0.09;
+   sum += texture(iChannel2, vec2(texcoord.x, texcoord.y + 4.0*blurSize)) * 0.05;
+
+    
+   texColor += sum;//fireflies;
+
+//-----------------------------------------------------------------------------------------------------       
+    // lighter vignette
+    float vignette = smoothstep(1.85, 0.0, length((2.0 * uv) - vec2(1.0)));
+    vec3 vignetteColor = vec3(0.4157, 0.1608, 0.7451);
+    fragColor =  vec4(mix(texColor.rgb * vignetteColor, texColor.rgb, vignette),1.0);
+    
+    
+   // plain scene
+  //fragColor = vec4( texColor.rgb, 1.0 );
+   //fragColor = fireflies; // show just the firefly pass
+    
+
+    
+}
+
